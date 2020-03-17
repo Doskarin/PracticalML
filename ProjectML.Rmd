@@ -1,0 +1,104 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Marlen Doskarin"
+date: "March 17, 2020"
+output: html_document
+---
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## R Code
+
+### Load Packages, set seed
+
+```{r message=FALSE, cache=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+set.seed(5316)
+```
+### Download the data into the working directory
+
+```{r message=FALSE, cache=FALSE, results='hide'}
+getwd()
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainFile <- "./data/pml-training.csv"
+testFile  <- "./data/pml-testing.csv"
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(trainFile)) {
+  download.file(trainUrl, destfile=trainFile)
+}
+if (!file.exists(testFile)) {
+  download.file(testUrl, destfile=testFile)
+}
+```
+### Reading and Cleaning Data
+
+Once the data is downloaded into a new data folder in the working directory, 
+the files are read into data frames in R. We then check the dimensions of the datasets with `dim` and the variable names with `names`.
+
+```{r message=FALSE, cache=FALSE}
+trainDat <- read.csv("./data/pml-training.csv", na.strings = c("NA","#DIV/0!",""))
+testDat <- read.csv("./data/pml-testing.csv", na.strings = c("NA","#DIV/0!",""))
+dim(trainDat)
+dim(testDat)
+names(trainDat)
+```
+We want to remove variables with missing observations from the training set -- these can negatively impact the predictive modeling. We remove from the training and the test set variables that don't contain the relevant accelerometry data, just to tidy the dataframes. From the output from `names`, we see that these variables are in the first seven columns of the dataframe.
+
+```{r message=FALSE, results='hide'}
+trainDat <- trainDat[, colSums(is.na(trainDat)) == 0] 
+testDat <- testDat[, colSums(is.na(testDat)) == 0]  
+trainDat <- trainDat[, -c(1:7)]
+testDat <- testDat[, -c(1:7)]
+```
+### Subsetting the training data
+
+We have a large sample size, so we can split our training dataset into new "subtraining" and "subtesting" datasets, partitioning about 80% of the samples into the training set. 
+
+```{r message=FALSE, results='hide'}
+inTrain <- createDataPartition(trainDat$classe, p=0.8, list=FALSE)
+newTraining = trainDat[ inTrain,]
+newTesting = trainDat[-inTrain,]
+```
+### Model Building
+
+Random forests are a robust method for classifying factor variables such as **classe**, the outcome variable, because of their efficiency at selecting the most important predictive variables and handling of covariates and outliers.
+
+We first build the predictive model using our new subsetted training data.
+
+```{r message=FALSE, results='hide'}
+fitForest <- randomForest(classe ~., data=newTraining, type="class")
+```
+Then we test the fit on the testing subset of the training data and calculate the accuracy using `confusionMatrix`.
+
+```{r message=FALSE}
+resultForest <- predict(fitForest, newTesting)
+confusionMatrix(newTesting$classe, resultForest)
+```
+As we can see, the accuracy of this model is about 99.67%, indicating accurate prediction. 
+
+### Predicting the test dataset
+
+Finally, we can use our model to predict class levels in the given test data.
+
+```{r}
+finalResult <- predict(fitForest, testDat)
+print(finalResult)
+```
+### Figures
+
+A tree model can be useful in visualizing the classification scheme.
+
+```{r echo=FALSE}
+treeTest <- rpart(classe ~ ., data=trainDat, method="class")
+prp(treeTest)
+```
